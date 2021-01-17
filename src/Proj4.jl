@@ -3,6 +3,7 @@ module Proj4
 using PROJ_jll
 using CEnum
 using StaticArrays
+using CoordinateTransformations
 
 export Projection, # proj_types.jl
        transform, transform!,  # proj_functions.jl
@@ -18,8 +19,8 @@ include("proj_capi.jl") # low-level C-facing functions (corresponding to src/pro
 include("proj_geodesic.jl") # low-level C-facing functions (corresponding to src/geodesic.h)
 
 # these are part of the new PROJ API
-include("coord.jl")
 include("proj_common.jl")
+include("coord.jl")
 include("proj_c.jl")
 include("error.jl")
 

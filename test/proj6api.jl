@@ -40,8 +40,8 @@ end
     results = Proj4.proj_create_operations(src, tgt, factory)
     @test results != C_NULL
     n = Proj4.proj_list_get_count(results)
-    for i in 1:n
-        operation = Proj4.proj_list_get(results, i-1)
+    for i = 1:n
+        operation = Proj4.proj_list_get(results, i - 1)
         hasballpark = Bool(Proj4.proj_coordoperation_has_ballpark_transformation(operation))
         print("""Operation $i
             Name: $(Proj4.proj_get_name(operation))
@@ -110,6 +110,98 @@ end
     @test b[4] === 0.0
 
     # Clean up
-    Proj4.proj_destroy(pj)
-    # TODO julia crashes if proj_destroy is called twice, i.e. on a null pointer
+    pj = Proj4.proj_destroy(pj)
+    pj = Proj4.proj_destroy(pj)
+    # Julia crashes if proj_destroy is called twice on the same non nullptr,
+    # since the contents at that address are already wiped. To prevent this,
+    # change the input binding directly after, e.g. pj = proj_destroy(pj)  # -> C_NULL
+end
+
+@testset "inverse transformation" begin
+    tr = Proj4.Transformation("EPSG:4326", "+proj=utm +zone=32 +datum=WGS84")
+    tr⁻¹ = inv(tr)
+    tr¹ = inv(tr⁻¹)
+
+    # inverse twice should get the same transform back
+    wkt_type = Proj4.PJ_WKT2_2019
+    @test Proj4.proj_as_wkt(tr⁻¹.pj, wkt_type) != Proj4.proj_as_wkt(tr.pj, wkt_type)
+    @test Proj4.proj_as_wkt(tr¹.pj, wkt_type) == Proj4.proj_as_wkt(tr.pj, wkt_type)
+end
+
+@testset "single transformation" begin
+    source_crs = Proj4.proj_create("EPSG:4326")
+    target_crs = Proj4.proj_create("EPSG:28992")
+    @test source_crs isa Ptr{Nothing}
+    @test target_crs isa Ptr{Nothing}
+    tr = Proj4.Transformation(source_crs, target_crs)
+
+    a = Proj4.proj_coord(52.16, 5.39)
+    b = Proj4.proj_trans(tr.pj, Proj4.PJ_FWD, a)
+    @test a != b
+    @test b ≈ Proj4.proj_coord(155191.3538124342, 463537.1362732911)
+
+    # with normalize=True, we need to use lon/lat, and still get x/y out
+    tr = Proj4.Transformation(source_crs, target_crs, normalize = true)
+    a = Proj4.proj_coord(5.39, 52.16)
+    b = Proj4.proj_trans(tr.pj, Proj4.PJ_FWD, a)
+    @test a != b
+    @test b ≈ Proj4.proj_coord(155191.3538124342, 463537.1362732911)
+end
+
+@testset "dense 4D coord vector transformation" begin
+    source_crs = Proj4.proj_create("EPSG:4326")
+    target_crs = Proj4.proj_create("EPSG:28992")
+    tr = Proj4.Transformation(source_crs, target_crs, normalize = true)
+    # This array is mutated in place. Note that this array needs to have 4D elements,
+    # with 2D elements it will only do every other one
+    A = [Proj4.proj_coord(5.39, 52.16) for _ = 1:5]
+    err = Proj4.proj_trans_array(tr.pj, Proj4.PJ_FWD, length(A), A)
+    @test err == 0
+    B = [Proj4.proj_coord(155191.3538124342, 463537.1362732911) for _ = 1:5]
+    @test A ≈ B
+
+    # since A is not in target_crs, we will get an error on a second call
+    err = Proj4.proj_trans_array(tr.pj, Proj4.PJ_FWD, length(A), A)
+    errno = Proj4.proj_errno(tr.pj)
+    @test err == errno == -14
+    @test Proj4.proj_errno_string(errno) == "latitude or longitude exceeded limits"
+    # reset error
+    Proj4.proj_errno_reset(tr.pj)
+    @test Proj4.proj_errno(tr.pj) == 0
+    # test triggering finalizer manually
+    finalize(tr)
+    @test tr.pj === C_NULL
+end
+
+@testset "generic array transformation" begin
+    source_crs = Proj4.proj_create("EPSG:4326")
+    target_crs = Proj4.proj_create("EPSG:28992")
+    tr = Proj4.Transformation(source_crs, target_crs, normalize = true)
+
+    # inplace transformation of vector of 2D coordinates
+    # using https://proj.org/development/reference/functions.html#c.proj_trans_generic
+    A = [SA[5.39, 52.16] for _ = 1:5]
+    st = sizeof(first(A))
+    ptr = pointer(A)
+    n = length(A)
+    # 8 is sizeof(Float64), so ptr + 8 points to first latitude element
+    n_done = Proj4.proj_trans_generic(
+        tr.pj,
+        Proj4.PJ_FWD,
+        ptr,
+        st,
+        n,
+        ptr + 8,
+        st,
+        n,
+        C_NULL,
+        C_NULL,
+        C_NULL,
+        C_NULL,
+        C_NULL,
+        C_NULL,
+    )
+    @test n_done == n
+    B = [SA[155191.3538124342, 463537.1362732911] for _ = 1:5]
+    @test A ≈ B
 end
