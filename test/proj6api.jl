@@ -84,31 +84,30 @@ end
     # coordinates is longitude, latitude, and values are expressed in degrees.
     a = Proj4.proj_coord(12, 55)
     @test a isa AbstractVector
-    @test a isa FieldVector{4, Float64}
+    @test a isa SVector{4,Float64}
     @test a isa Proj4.Coord
     @test eltype(a) == Float64
     @test length(a) == 4
     @test sum(a) == 12 + 55
-    @test a[2] === 55.0
     @test isbits(a)
-    @test a.x === 12.0
-    @test a.y === 55.0
-    @test a.z === 0.0
-    @test a.t === 0.0
+    @test a[1] === 12.0
+    @test a[2] === 55.0
+    @test a[3] === 0.0
+    @test a[4] === 0.0
 
     # transform to UTM zone 32
     b = Proj4.proj_trans(pj, Proj4.PJ_FWD, a)
-    @test b.x ≈ 691875.632
-    @test b.y ≈ 6098907.825
-    @test b.z === 0.0
-    @test b.t === 0.0
+    @test b[1] ≈ 691875.632
+    @test b[2] ≈ 6098907.825
+    @test b[3] === 0.0
+    @test b[4] === 0.0
 
     # inverse transform, back to geographical
     b = Proj4.proj_trans(pj, Proj4.PJ_INV, b)
-    @test b.x ≈ 12.0
-    @test b.y ≈ 55.0
-    @test b.z === 0.0
-    @test b.t === 0.0
+    @test b[1] ≈ 12.0
+    @test b[2] ≈ 55.0
+    @test b[3] === 0.0
+    @test b[4] === 0.0
 
     # Clean up
     Proj4.proj_destroy(pj)
