@@ -1,6 +1,7 @@
 using Test
 using StaticArrays
-import Proj4
+using Proj4
+import PROJ_jll
 
 @testset "Error handling" begin
     @test Proj4.proj_errno_string(0) == nothing
@@ -205,3 +206,14 @@ end
     B = [SA[155191.3538124342, 463537.1362732911] for _ = 1:5]
     @test A ≈ B
 end
+
+tr = Proj4.Transformation("EPSG:4326", "EPSG:28992", normalize = true)
+tr(Proj4.proj_coord(5.39, 52.16))
+b = tr(SA[5.39, 52.16, 0.0, 0.0])
+@test b isa SVector{4, Float64}
+b = tr(SA[5.39, 52.16])
+@test b isa SVector{2, Float64}
+tr(SA_F32[5.39, 52.16])
+@test b isa SVector{2, Float64}
+b = tr(SA[5, 52])
+@test b isa SVector{2, Float64}
